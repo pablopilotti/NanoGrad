@@ -2,6 +2,9 @@ class Value:
     """
     Stores a single scalar value and its gradient.
     This is the core building block for automatic differentiation.
+    
+    TODO: Implement the forward and backward passes for all operations
+    This class should support basic arithmetic operations with automatic differentiation
     """
 
     def __init__(self, data, _children=(), _op=''):
@@ -16,6 +19,9 @@ class Value:
     def __add__(self, other):
         """
         Addition: z = x + y
+        
+        TODO: Implement forward pass (compute output value)
+        TODO: Implement backward pass (compute gradients)
         """
         other = other if isinstance(other, Value) else Value(other)
 
@@ -31,6 +37,9 @@ class Value:
     def __mul__(self, other):
         """
         Multiplication: z = x * y
+        
+        TODO: Implement forward pass (compute output value)
+        TODO: Implement backward pass (compute gradients)
         """
         other = other if isinstance(other, Value) else Value(other)
 
@@ -46,6 +55,9 @@ class Value:
     def __pow__(self, other):
         """
         Power: z = x ** n (n is a constant)
+        
+        TODO: Implement forward pass (compute output value)
+        TODO: Implement backward pass (compute gradients)
         """
         assert isinstance(other, (int, float)), "only int/float powers supported"
 
@@ -61,8 +73,10 @@ class Value:
     def relu(self):
         """
         ReLU activation: max(0, x)
+        
+        TODO: Implement forward pass (compute output value)
+        TODO: Implement backward pass (compute gradients)
         """
-
         # TODO: compute forward and backward pass
         out = Value()
 
@@ -75,8 +89,10 @@ class Value:
     def backward(self):
         """
         Runs backpropagation starting from this node.
+        
+        TODO: Implement topological sort of the computation graph
+        TODO: Implement backward pass propagation
         """
-
         # TODO
         # --- Topological sort of the computation graph ---
         topo = []
@@ -95,7 +111,7 @@ class Value:
         for t in reversed(topo):
             t._backward()
 
-    # ---- Convenience operators ----
+    # ---- Convenience operators ---
 
     def __neg__(self):        # -x
         return self * -1
