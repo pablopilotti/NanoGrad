@@ -25,11 +25,12 @@ class Value:
         """
         other = other if isinstance(other, Value) else Value(other)
 
-        # TODO: compute forward and backward pass
-        out = Value()
+        # Forward pass
+        out = Value(self.data + other.data, (self, other), '+')
 
         def _backward():
-            pass
+            self.grad += out.grad
+            other.grad += out.grad
 
         out._backward = _backward
         return out
@@ -43,11 +44,12 @@ class Value:
         """
         other = other if isinstance(other, Value) else Value(other)
 
-        # TODO: compute forward and backward pass
-        out = Value()
+        # Forward pass
+        out = Value(self.data * other.data, (self, other), '*')
 
         def _backward():
-            pass
+            self.grad += other.data * out.grad
+            other.grad += self.data * out.grad
 
         out._backward = _backward
         return out
@@ -61,11 +63,11 @@ class Value:
         """
         assert isinstance(other, (int, float)), "only int/float powers supported"
 
-        # TODO: compute forward and backward pass
-        out = Value()
+        # Forward pass
+        out = Value(self.data ** other, (self,), f'**{other}')
 
         def _backward():
-            pass
+            self.grad += (other * self.data**(other-1)) * out.grad
 
         out._backward = _backward
         return out
@@ -77,11 +79,11 @@ class Value:
         TODO: Implement forward pass (compute output value)
         TODO: Implement backward pass (compute gradients)
         """
-        # TODO: compute forward and backward pass
-        out = Value()
+        # Forward pass
+        out = Value(max(0, self.data), (self,), 'ReLU')
 
         def _backward():
-            pass
+            self.grad += (out.data > 0) * out.grad
 
         out._backward = _backward
         return out
@@ -93,21 +95,28 @@ class Value:
         TODO: Implement topological sort of the computation graph
         TODO: Implement backward pass propagation
         """
-        # TODO
         # --- Topological sort of the computation graph ---
         topo = []
         visited = set()
 
         def build_topo(v):
-            pass
+            if v not in visited:
+                visited.add(v)
+                for child in v._prev:
+                    build_topo(child)
+                topo.append(v)
 
         # --- Backward pass ---
-        # TODO
-        # call build_topo(self)
-        # make grads = 0 for all nodes in topo
-        # set self.grad = 1.0
+        build_topo(self)
+        
+        # Zero out gradients for all nodes
+        for node in topo:
+            node.grad = 0.0
+        
+        # Set gradient of output node to 1
+        self.grad = 1.0
 
-
+        # Propagate gradients backward
         for t in reversed(topo):
             t._backward()
 
