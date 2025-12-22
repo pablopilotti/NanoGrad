@@ -1,10 +1,11 @@
 import random
 from NanoGrad.value import Value
 
+
 class Module:
     """
     Base class for all neural network modules.
-    
+
     Implement zero_grad method to reset gradients
     Implement parameters method to return all parameters
     """
@@ -22,10 +23,11 @@ class Module:
         """
         return []
 
+
 class Neuron(Module):
     """
     A single neuron (neural unit).
-    
+
     Implement initialization with input size and activation function
     Implement forward pass (__call__)
     Implement parameters method to return neuron's weights and bias
@@ -47,7 +49,7 @@ class Neuron(Module):
         Implement forward pass computation
         Apply activation function if nonlin=True
         """
-        ret = sum([w*xx for w,xx in zip(self.w, x)],self.b)
+        ret = sum([w * xx for w, xx in zip(self.w, x)], self.b)
         return ret.relu() if self.nonlin else ret
 
     def parameters(self):
@@ -62,10 +64,11 @@ class Neuron(Module):
         """
         return f"Neuron({len(self.w)}, nonlin={self.nonlin})"
 
+
 class Layer(Module):
     """
     A layer of neurons.
-    
+
     Implement initialization with input and output sizes
     Implement forward pass (__call__)
     Implement parameters method to return all layer parameters
@@ -85,7 +88,7 @@ class Layer(Module):
         """
         Implement forward pass through all neurons in the layer
         """
-        return [n(x) for n in self.neurons] 
+        return [n(x) for n in self.neurons]
 
     def parameters(self):
         """
@@ -99,10 +102,11 @@ class Layer(Module):
         """
         return f"Layer({len(self.neurons[0].w)}, {len(self.neurons)})"
 
+
 class MLP(Module):
     """
     Multi-Layer Perceptron.
-    
+
     Implement initialization with input size and layer sizes
     Implement forward pass (__call__)
     Implement parameters method to return all MLP parameters
@@ -125,10 +129,10 @@ class MLP(Module):
         Implement forward pass through all layers
         """
         ret = x
-        for l in self.layers:
-            ret = l(x)
+        for layer in self.layers:
+            ret = layer(ret)
         return ret[0]
-    
+
     def parameters(self):
         """
         Return all parameters from all layers in the MLP
@@ -139,6 +143,7 @@ class MLP(Module):
         """
         Return string representation of the MLP
         """
-        layer_sizes = [len(self.layers[0].neurons[0].w)] + [len(layer.neurons) for layer in self.layers]
+        layer_sizes = [len(self.layers[0].neurons[0].w)] + [
+            len(layer.neurons) for layer in self.layers
+        ]
         return f"MLP({', '.join(str(size) for size in layer_sizes)})"
-
