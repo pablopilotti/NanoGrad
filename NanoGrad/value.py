@@ -19,17 +19,18 @@ class Value:
     def __add__(self, other):
         """
         Addition: z = x + y
-        
-        TODO: Implement forward pass (compute output value)
-        TODO: Implement backward pass (compute gradients)
         """
         other = other if isinstance(other, Value) else Value(other)
 
-        # TODO: compute forward and backward pass
-        out = Value()
+        out = Value(
+            self.data + other.data,
+            (self, other),
+            '+'
+        )
 
         def _backward():
-            pass
+            self.grad += out.grad  
+            other.grad += out.grad
 
         out._backward = _backward
         return out
@@ -37,17 +38,18 @@ class Value:
     def __mul__(self, other):
         """
         Multiplication: z = x * y
-        
-        TODO: Implement forward pass (compute output value)
-        TODO: Implement backward pass (compute gradients)
         """
         other = other if isinstance(other, Value) else Value(other)
 
-        # TODO: compute forward and backward pass
-        out = Value()
+        out = Value(
+            self.data * other.data,
+            (self, other),
+            '*'
+        )
 
         def _backward():
-            pass
+            self.grad += out.grad * other.data 
+            other.grad += out.grad * self.data
 
         out._backward = _backward
         return out
@@ -55,17 +57,19 @@ class Value:
     def __pow__(self, other):
         """
         Power: z = x ** n (n is a constant)
-        
-        TODO: Implement forward pass (compute output value)
-        TODO: Implement backward pass (compute gradients)
         """
+
         assert isinstance(other, (int, float)), "only int/float powers supported"
 
-        # TODO: compute forward and backward pass
-        out = Value()
+        out = Value(
+            self.data ** other,
+            (self,),
+            '^'
+        )
 
         def _backward():
-            pass
+            self.grad += out.grad * other *  self.data ** (other-1)
+
 
         out._backward = _backward
         return out
@@ -73,15 +77,15 @@ class Value:
     def relu(self):
         """
         ReLU activation: max(0, x)
-        
-        TODO: Implement forward pass (compute output value)
-        TODO: Implement backward pass (compute gradients)
         """
-        # TODO: compute forward and backward pass
-        out = Value()
+        out = Value(
+            self.data if self.data > 0 else 0 ,
+            (self,),
+            'Relu'
+        )
 
         def _backward():
-            pass
+            self.grad += out.grad if self.data > 0 else 0
 
         out._backward = _backward
         return out
@@ -89,23 +93,26 @@ class Value:
     def backward(self):
         """
         Runs backpropagation starting from this node.
-        
-        TODO: Implement topological sort of the computation graph
-        TODO: Implement backward pass propagation
         """
-        # TODO
         # --- Topological sort of the computation graph ---
         topo = []
         visited = set()
 
         def build_topo(v):
-            pass
+            if v not in visited:
+                visited.add(v)
+                for n in v._prev:
+                    build_topo(n)
+                topo.append(v)
+
+            
 
         # --- Backward pass ---
-        # TODO
-        # call build_topo(self)
-        # make grads = 0 for all nodes in topo
-        # set self.grad = 1.0
+        build_topo(self)
+        for g in topo:
+            g.grad = 0
+
+        self.grad = 1.0
 
 
         for t in reversed(topo):
