@@ -1,132 +1,144 @@
+import random
 from NanoGrad.value import Value
 
 class Module:
     """
     Base class for all neural network modules.
     
-    TODO: Implement zero_grad method to reset gradients
-    TODO: Implement parameters method to return all parameters
+    Implement zero_grad method to reset gradients
+    Implement parameters method to return all parameters
     """
 
     def zero_grad(self):
         """
-        TODO: Reset all parameter gradients to zero
+        Reset all parameter gradients to zero
         """
-        pass
+        for p in self.parameters():
+            p.grad = 0.0
 
     def parameters(self):
         """
-        TODO: Return all parameters (Value objects) in this module
+        Return all parameters (Value objects) in this module
         """
-        pass
+        return []
 
 class Neuron(Module):
     """
     A single neuron (neural unit).
     
-    TODO: Implement initialization with input size and activation function
-    TODO: Implement forward pass (__call__)
-    TODO: Implement parameters method to return neuron's weights and bias
-    TODO: Implement string representation
+    Implement initialization with input size and activation function
+    Implement forward pass (__call__)
+    Implement parameters method to return neuron's weights and bias
+    Implement string representation
     """
 
     def __init__(self, nin, nonlin=True):
         """
-        TODO: Initialize neuron with nin inputs
-        TODO: Create weights and bias as Value objects
-        TODO: Set non-linearity flag
+        Initialize neuron with nin inputs
+        Create weights and bias as Value objects
+        Set non-linearity flag
         """
-        # self.w =
-        # self.b = 
-        # self.nonlin = 
+        self.w = [Value(random.random()) for _ in range(nin)]
+        self.b = Value(0)
+        self.nonlin = nonlin
 
     def __call__(self, x):
         """
-        TODO: Implement forward pass computation
-        TODO: Apply activation function if nonlin=True
+        Implement forward pass computation
+        Apply activation function if nonlin=True
         """
-        # Compute weighted sum
-        pass
+        ret = sum([w*xx for w,xx in zip(self.w, x)],self.b)
+        return ret.relu() if self.nonlin else ret
 
     def parameters(self):
         """
-        TODO: Return neuron's weights and bias
+        Return neuron's weights and bias
         """
-        pass
+        return [w for w in self.w] + [self.b]
 
     def __repr__(self):
         """
-        TODO: Return string representation of the neuron
+        Return string representation of the neuron
         """
-        pass
+        return f"Neuron({len(self.w)}, nonlin={self.nonlin})"
 
 class Layer(Module):
     """
     A layer of neurons.
     
-    TODO: Implement initialization with input and output sizes
-    TODO: Implement forward pass (__call__)
-    TODO: Implement parameters method to return all layer parameters
-    TODO: Implement string representation
+    Implement initialization with input and output sizes
+    Implement forward pass (__call__)
+    Implement parameters method to return all layer parameters
+    Implement string representation
     """
 
     def __init__(self, nin, nout, **kwargs):
         """
-        TODO: Initialize layer with nin inputs and nout outputs
-        TODO: Create neurons in the layer
+        Initialize layer with nin inputs and nout outputs
+        Create neurons in the layer
         """
-        pass
+        self.nin = nin
+        self.nout = nout
+        self.neurons = [Neuron(nin) for _ in range(nout)]
 
     def __call__(self, x):
         """
-        TODO: Implement forward pass through all neurons in the layer
+        Implement forward pass through all neurons in the layer
         """
-        pass
+        return [n(x) for n in self.neurons] 
 
     def parameters(self):
         """
-        TODO: Return all parameters from all neurons in the layer
+        Return all parameters from all neurons in the layer
         """
-        pass
+        return [p for x in self.neurons for p in x.parameters()]
 
     def __repr__(self):
         """
-        TODO: Return string representation of the layer
+        Return string representation of the layer
         """
-        pass
+        return f"Layer({len(self.neurons[0].w)}, {len(self.neurons)})"
 
 class MLP(Module):
     """
     Multi-Layer Perceptron.
     
-    TODO: Implement initialization with input size and layer sizes
-    TODO: Implement forward pass (__call__)
-    TODO: Implement parameters method to return all MLP parameters
-    TODO: Implement string representation
+    Implement initialization with input size and layer sizes
+    Implement forward pass (__call__)
+    Implement parameters method to return all MLP parameters
+    Implement string representation
     """
 
     def __init__(self, nin, nouts):
         """
-        TODO: Initialize MLP with input size and list of output sizes for each layer
-        TODO: Create layers in the network
+        Initialize MLP with input size and list of output sizes for each layer
+        Create layers in the network
         """
-        pass
+        self.layers = []
+        myin = nin
+        for myout in nouts:
+            self.layers.append(Layer(myin, myout))
+            myin = myout
 
     def __call__(self, x):
         """
-        TODO: Implement forward pass through all layers
+        Implement forward pass through all layers
         """
-        pass
+        ret = x
+        for l in self.layers:
+            ret = l(x)
+        return ret[0]
     
     def parameters(self):
         """
-        TODO: Return all parameters from all layers in the MLP
+        Return all parameters from all layers in the MLP
         """
-        pass
+        return [p for x in self.layers for p in x.parameters()]
 
     def __repr__(self):
         """
-        TODO: Return string representation of the MLP
+        Return string representation of the MLP
         """
-        pass
+        layer_sizes = [len(self.layers[0].neurons[0].w)] + [len(layer.neurons) for layer in self.layers]
+        return f"MLP({', '.join(str(size) for size in layer_sizes)})"
 
