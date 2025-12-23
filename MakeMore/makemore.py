@@ -14,7 +14,18 @@ itoc = {i: ch for i, ch in enumerate(chars)}
 VOCAB_SIZE = len(chars)
 
 def load_names():
-    """Load and preprocess names from names.txt"""
+    """
+    Load and preprocess names from names.txt file.
+    
+    Returns:
+        list: A list of names as strings, each split by whitespace from the file
+        
+    Raises:
+        FileNotFoundError: If names.txt cannot be found in the expected locations
+        
+    The function tries to find names.txt in the current directory or in the MakeMore/
+    subdirectory. Once found, it reads the file and splits the content by whitespace.
+    """
     # Try different paths
     paths_to_try = ['names.txt', 'MakeMore/names.txt']
     for path in paths_to_try:
@@ -25,7 +36,21 @@ def load_names():
     raise FileNotFoundError("Could not find names.txt in any of the expected locations")
 
 def create_bigram_dataset(names):
-    """Create bigram dataset from names"""
+    """
+    Create a bigram dataset from a list of names.
+    
+    Args:
+        names (list): List of names as strings
+        
+    Returns:
+        tuple: (xs, ys) where both are torch.Tensor of integers
+               xs contains indices of first characters in bigrams
+               ys contains indices of second characters in bigrams
+               
+    Each name is surrounded with start and end tokens. For each adjacent pair
+    of characters in the processed names, the first character index goes to xs
+    and the second to ys. This creates the training data for the bigram model.
+    """
     xs, ys = [], []
     for name in names:
         # Add start and end tokens
@@ -36,7 +61,19 @@ def create_bigram_dataset(names):
     return torch.tensor(xs), torch.tensor(ys)
 
 def save_bigram_tensors():
-    """Save bigram tensors to disk"""
+    """
+    Generate and save bigram tensors to disk for faster loading.
+    
+    This function processes the names, computes the bigram statistics,
+    and saves the following tensors:
+    - xs.pt: Input character indices
+    - ys.pt: Target character indices
+    - P.pt: Probability matrix of transitions between characters
+    - N.pt: Count matrix of transitions between characters
+    
+    The count matrix N starts with ones for smoothing and is incremented
+    by each observed bigram transition. P is the normalized probability matrix.
+    """
     names = load_names()
     xs, ys = create_bigram_dataset(names)
     
@@ -55,7 +92,19 @@ def save_bigram_tensors():
     torch.save(N, "N.pt")
 
 def load_bigram_tensors():
-    """Load bigram tensors, creating them if they don't exist"""
+    """
+    Load precomputed bigram tensors from disk, generating them if missing.
+    
+    Returns:
+        tuple: (xs, ys, P, N) where:
+            xs (torch.Tensor): Input character indices
+            ys (torch.Tensor): Target character indices  
+            P (torch.Tensor): Probability matrix
+            N (torch.Tensor): Count matrix
+            
+    If the tensor files don't exist, they are generated and saved first.
+    This provides a convenient way to cache the preprocessed data.
+    """
     if not Path("xs.pt").is_file():
         save_bigram_tensors()
     return (
@@ -66,7 +115,18 @@ def load_bigram_tensors():
     )
 
 def bigram_model():
-    """Bigram model using counting probabilities"""
+    """
+    Create and evaluate a counting-based bigram model.
+    
+    Returns:
+        tuple: (P, loss) where:
+            P (torch.Tensor): The probability matrix
+            loss (float): The negative log likelihood loss on the dataset
+            
+    This model uses maximum likelihood estimation via counting to learn
+    character transition probabilities. The loss is computed as the average
+    negative log likelihood of the true transitions in the dataset.
+    """
     xs, ys, P, _ = load_bigram_tensors()
     
     # Calculate loss
@@ -74,7 +134,20 @@ def bigram_model():
     return P, loss.item()
 
 def generate_with_bigram(model, num_samples, seed=2147483647):
-    """Generate names using the bigram model"""
+    """
+    Generate names using the bigram probability model.
+    
+    Args:
+        model (torch.Tensor): Probability matrix P from bigram_model()
+        num_samples (int): Number of names to generate
+        seed (int): Random seed for reproducibility
+        
+    Returns:
+        list: A list of generated names as strings
+        
+    The generation starts with the start token and samples characters
+    according to the transition probabilities until an end token is generated.
+    """
     P = model
     g_cpu = torch.Generator().manual_seed(seed)
     
@@ -92,7 +165,16 @@ def generate_with_bigram(model, num_samples, seed=2147483647):
     return names
 
 def train_neural_net():
-    """Train neural network bigram model"""
+    """
+    Train a neural network-based bigram model using gradient descent.
+    
+    Returns:
+        torch.Tensor: The trained weight matrix W with requires_grad=True
+        
+    The model uses a simple linear layer followed by softmax to predict
+    the next character. Training includes L2 regularization to prevent overfitting.
+    Weights are initialized with a fixed seed for reproducibility.
+    """
     xs, ys, _, _ = load_bigram_tensors()
     
     # Use torch.randn for better initialization
@@ -129,7 +211,15 @@ def train_neural_net():
     return W
 
 def load_or_train_W():
-    """Load trained weights or train if not present"""
+    """
+    Load pre-trained weights or train a new model if weights don't exist.
+    
+    Returns:
+        torch.Tensor: The weight matrix W, either loaded from disk or freshly trained
+        
+    This provides a caching mechanism to avoid retraining the model every time.
+    The weights are saved to W.pt for future use.
+    """
     if not Path("W.pt").is_file():
         W = train_neural_net()
         torch.save(W, "W.pt")
