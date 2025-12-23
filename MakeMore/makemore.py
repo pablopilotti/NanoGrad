@@ -228,7 +228,20 @@ def load_or_train_W():
     return W
 
 def generate_with_neural_net(W, num_samples, seed=2147483647):
-    """Generate names using the neural network model"""
+    """
+    Generate names using the trained neural network model.
+    
+    Args:
+        W (torch.Tensor): The trained weight matrix
+        num_samples (int): Number of names to generate
+        seed (int): Random seed for reproducibility
+        
+    Returns:
+        list: A list of generated names as strings
+        
+    Similar to the bigram generation, but uses the neural network's predictions
+    for the next character probabilities at each step.
+    """
     generator = torch.Generator().manual_seed(seed)
     
     names = []
@@ -249,6 +262,12 @@ def generate_with_neural_net(W, num_samples, seed=2147483647):
     return names
 
 def main():
+    """
+    Main function to demonstrate both bigram and neural network models.
+    
+    Generates names using both approaches and prints their performance metrics
+    and sample outputs for comparison.
+    """
     # Bigram model
     P, loss = bigram_model()
     print(f"Bigram model loss: {loss:.4f}")
