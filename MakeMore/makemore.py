@@ -3,9 +3,67 @@ import torch
 import torch.nn.functional as F
 from pathlib import Path
 
-# Import our new modules
-from .config import ctoi, itoc, VOCAB_SIZE
-from .data_loader import load_bigram_tensors
+# Character mapping configuration
+START_TOKEN = '.'
+END_TOKEN = '.'
+
+# Build character to index and index to character mappings
+chars = [START_TOKEN] + [chr(ord('a') + i) for i in range(26)]
+ctoi = {ch: i for i, ch in enumerate(chars)}
+itoc = {i: ch for i, ch in enumerate(chars)}
+VOCAB_SIZE = len(chars)
+
+def load_names():
+    """Load and preprocess names from names.txt"""
+    # Try different paths
+    paths_to_try = ['names.txt', 'MakeMore/names.txt']
+    for path in paths_to_try:
+        if Path(path).exists():
+            with open(path, 'r') as file:
+                names = file.read().split()
+            return names
+    raise FileNotFoundError("Could not find names.txt in any of the expected locations")
+
+def create_bigram_dataset(names):
+    """Create bigram dataset from names"""
+    xs, ys = [], []
+    for name in names:
+        # Add start and end tokens
+        name_tokens = START_TOKEN + name + END_TOKEN
+        for c1, c2 in zip(name_tokens, name_tokens[1:]):
+            xs.append(ctoi[c1])
+            ys.append(ctoi[c2])
+    return torch.tensor(xs), torch.tensor(ys)
+
+def save_bigram_tensors():
+    """Save bigram tensors to disk"""
+    names = load_names()
+    xs, ys = create_bigram_dataset(names)
+    
+    # Create count matrix N
+    N = torch.ones((VOCAB_SIZE, VOCAB_SIZE), dtype=torch.int32)
+    for x, y in zip(xs, ys):
+        N[x, y] += 1
+    
+    # Create probability matrix P
+    P = N / N.sum(1, keepdim=True)
+    
+    # Save tensors
+    torch.save(xs, "xs.pt")
+    torch.save(ys, "ys.pt")
+    torch.save(P, "P.pt")
+    torch.save(N, "N.pt")
+
+def load_bigram_tensors():
+    """Load bigram tensors, creating them if they don't exist"""
+    if not Path("xs.pt").is_file():
+        save_bigram_tensors()
+    return (
+        torch.load("xs.pt"),
+        torch.load("ys.pt"),
+        torch.load("P.pt"),
+        torch.load("N.pt")
+    )
 
 def bigram_model():
     """Bigram model using counting probabilities"""
@@ -37,64 +95,37 @@ def train_neural_net():
     """Train neural network bigram model"""
     xs, ys, _, _ = load_bigram_tensors()
     
-    # Training setup
-    learning_rate = 100.0
-    g_cpu = torch.Generator().manual_seed(2147483647)
-    W = torch.rand((VOCAB_SIZE, VOCAB_SIZE), dtype=torch.float, requires_grad=True, generator=g_cpu)
+    # Use torch.randn for better initialization
+    generator = torch.Generator().manual_seed(2147483647)
+    W = torch.randn((VOCAB_SIZE, VOCAB_SIZE), generator=generator, requires_grad=True)
     
-    for i in range(1000):
+    # More reasonable training parameters
+    learning_rate = 50.0
+    num_epochs = 200
+    regularization_strength = 0.01
+    
+    for epoch in range(num_epochs):
         # Forward pass
         xenc = F.one_hot(xs, num_classes=VOCAB_SIZE).float()
         logits = xenc @ W
         counts = logits.exp()
-        prob = counts / counts.sum(1, keepdim=True)
+        probs = counts / counts.sum(1, keepdim=True)
         
         # Loss with L2 regularization
-        loss = -prob[torch.arange(prob.shape[0]), ys].log().mean() + 0.001 * (W**2).mean()
-        
-        # Adjust learning rate
-        if i % 100 == 0:
-            learning_rate /= 2.0
-            print(f"Step {i}, Loss: {loss.item()}")
+        data_loss = -probs[torch.arange(xs.size(0)), ys].log().mean()
+        reg_loss = regularization_strength * (W**2).mean()
+        loss = data_loss + reg_loss
         
         # Backward pass
         W.grad = None
         loss.backward()
-        W.data += -learning_rate * W.grad
+        
+        # Update weights
+        W.data -= learning_rate * W.grad
+        
+        if epoch % 50 == 0:
+            print(f"Epoch {epoch}, Loss: {loss.item():.4f}")
     
-    return W
-
-def train():
-    xs, ys, _, _ = load_bigram_tensors()
-    step = 100.0
-    g_cpu = torch.Generator().manual_seed(2147483647)
-    W = torch.rand((27,27),dtype=torch.float, requires_grad = True, generator=g_cpu)
-    for i in range(1000):
-        # Forward pass
-        xenc = F.one_hot(xs, num_classes = len(itoc)).float()
-        logits = xenc @ W
-        counts = logits.exp()
-        prob = counts / counts.sum(1,keepdim=True)
-
-        loss = - prob[torch.arange(prob.shape[0]), ys].log().mean() + 0.001*(W**2).mean()
-        if i % 100 == 0:
-            step /= 2.0
-            print(step, loss)
-
-        # print(ys.shape)
-        W.grad = None
-        loss.backward()
-
-        W.data += -step*W.grad
-
-    return W     
-
-def load_W():
-    if not Path("W.pt").is_file():
-        W = train()
-    else:
-        W = torch.load("W.pt")
-    torch.save(W, "W.pt")
     return W
 
 def load_or_train_W():
