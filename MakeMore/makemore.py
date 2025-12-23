@@ -1,71 +1,68 @@
 
-# read names.txt
 import torch
 import torch.nn.functional as F
-import matplotlib.pyplot as plt
 from pathlib import Path
 
+# Import our new modules
+from .config import ctoi, itoc, VOCAB_SIZE
+from .data_loader import load_bigram_tensors
 
-
-ctoi = {'.': 0}
-itoc = {0: '.'}
-for i in range(ord('z')-ord('a')+1):
-    ctoi[chr(ord('a') + i)] = i +1
-    itoc[i+1] = chr(ord('a') + i)
-
-def save_bigram_tensors():
-    with open('names.txt','r') as file:
-        names = file.read().split()
-    
-    N = torch.ones((len(itoc),len(itoc)), dtype=torch.int32)
-    xs = []
-    ys = []
-    for name in names:
-        n = '.' + name + '.'
-        for c1, c2 in zip(n,n[1:]):
-            n1 = ctoi[c1]
-            n2 = ctoi[c2]
-            N[n1, n2] += 1
-            xs.append(n1)
-            ys.append(n2)
-            
-    P = N / N.sum(1,keepdim=True)
-    xs = torch.tensor(xs)
-    ys = torch.tensor(ys)
-    torch.save(xs, "xs.pt")
-    torch.save(ys, "ys.pt")
-    torch.save(P, "P.pt")
-    torch.save(N, "N.pt")
-
-def load_bigram_tensors():
-    if not Path("xs.pt").is_file():
-        save_bigram_tensors()
-
-    xs = torch.load("xs.pt")
-    ys = torch.load("ys.pt")
-    P = torch.load("P.pt")
-    N = torch.load("N.pt")
-    return xs, ys, P, N
-
-def bigram(cant):
+def bigram_model():
+    """Bigram model using counting probabilities"""
     xs, ys, P, _ = load_bigram_tensors()
- 
-    print(xs[0].item())
-    loss = torch.tensor([-torch.log(P[x.item(),y.item()]) for x, y in zip(xs,ys)]).mean()
-    print('loss: ', loss)
-    print('table')
-    print()
-    g_cpu = torch.Generator().manual_seed(2147483647)
-    for _ in range(cant):
-        select = 0
-        word = '' 
+    
+    # Calculate loss
+    loss = -torch.log(P[xs, ys]).mean()
+    return P, loss.item()
+
+def generate_with_bigram(model, num_samples, seed=2147483647):
+    """Generate names using the bigram model"""
+    P = model
+    g_cpu = torch.Generator().manual_seed(seed)
+    
+    names = []
+    for _ in range(num_samples):
+        select = 0  # Start with '.'
+        chars = []
         while True:
             prob = P[select]
             select = torch.multinomial(prob, num_samples=1, replacement=True, generator=g_cpu).item()
-            word += itoc[select]
-            if select == 0:
+            if select == ctoi['.']:  # End token
                 break
-        print(word)
+            chars.append(itoc[select])
+        names.append(''.join(chars))
+    return names
+
+def train_neural_net():
+    """Train neural network bigram model"""
+    xs, ys, _, _ = load_bigram_tensors()
+    
+    # Training setup
+    learning_rate = 100.0
+    g_cpu = torch.Generator().manual_seed(2147483647)
+    W = torch.rand((VOCAB_SIZE, VOCAB_SIZE), dtype=torch.float, requires_grad=True, generator=g_cpu)
+    
+    for i in range(1000):
+        # Forward pass
+        xenc = F.one_hot(xs, num_classes=VOCAB_SIZE).float()
+        logits = xenc @ W
+        counts = logits.exp()
+        prob = counts / counts.sum(1, keepdim=True)
+        
+        # Loss with L2 regularization
+        loss = -prob[torch.arange(prob.shape[0]), ys].log().mean() + 0.001 * (W**2).mean()
+        
+        # Adjust learning rate
+        if i % 100 == 0:
+            learning_rate /= 2.0
+            print(f"Step {i}, Loss: {loss.item()}")
+        
+        # Backward pass
+        W.grad = None
+        loss.backward()
+        W.data += -learning_rate * W.grad
+    
+    return W
 
 def train():
     xs, ys, _, _ = load_bigram_tensors()
@@ -100,30 +97,53 @@ def load_W():
     torch.save(W, "W.pt")
     return W
 
-def NN(cant):
-    W = load_W()
-    print()
-    print('NN')
+def load_or_train_W():
+    """Load trained weights or train if not present"""
+    if not Path("W.pt").is_file():
+        W = train_neural_net()
+        torch.save(W, "W.pt")
+    else:
+        W = torch.load("W.pt")
+    return W
+
+def generate_with_neural_net(W, num_samples, seed=2147483647):
+    """Generate names using the neural network model"""
+    generator = torch.Generator().manual_seed(seed)
     
-    g_cpu = torch.Generator().manual_seed(2147483647)
-    for i in range(cant):
-        select = 0
-        word = '' 
+    names = []
+    for _ in range(num_samples):
+        idx = 0  # Start with '.'
+        chars = []
         while True:
-            xenc = F.one_hot(torch.tensor([select]), num_classes = len(itoc)).float()
+            xenc = F.one_hot(torch.tensor([idx]), num_classes=VOCAB_SIZE).float()
             logits = xenc @ W
             counts = logits.exp()
-            prob = counts / counts.sum(1,keepdim=True)
+            prob = counts / counts.sum(1, keepdim=True)
             
-            select = torch.multinomial(prob, num_samples=1, replacement=True, generator=g_cpu).item()
-            word += itoc[select]
-            if select == 0:
+            idx = torch.multinomial(prob, num_samples=1, replacement=True, generator=generator).item()
+            if idx == ctoi['.']:  # End token
                 break
-        print(word)
+            chars.append(itoc[idx])
+        names.append(''.join(chars))
+    return names
 
 def main():
-    bigram(10)
-    NN(10)
+    # Bigram model
+    P, loss = bigram_model()
+    print(f"Bigram model loss: {loss:.4f}")
+    print("Generated names with bigram model:")
+    bigram_names = generate_with_bigram(P, 10)
+    for name in bigram_names:
+        print(name)
+    
+    print("\n" + "="*50 + "\n")
+    
+    # Neural network model
+    W = load_or_train_W()
+    print("Generated names with neural network:")
+    nn_names = generate_with_neural_net(W, 10)
+    for name in nn_names:
+        print(name)
 
 if __name__=="__main__":
     main()
