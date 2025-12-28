@@ -1,7 +1,7 @@
-
 import torch
 import torch.nn.functional as F
 from pathlib import Path
+import sys
 
 # Character mapping configuration
 START_TOKEN = '.'
@@ -13,10 +13,13 @@ ctoi = {ch: i for i, ch in enumerate(chars)}
 itoc = {i: ch for i, ch in enumerate(chars)}
 VOCAB_SIZE = len(chars)
 
-def load_names():
+def load_names(filename="names.txt"):
     """
     Load and preprocess names from names.txt file.
     
+    Args:
+        filename (str): Path to the names file (default: "names.txt")
+        
     Returns:
         list: A list of names as strings, each split by whitespace from the file
         
@@ -27,13 +30,13 @@ def load_names():
     subdirectory. Once found, it reads the file and splits the content by whitespace.
     """
     # Try different paths
-    paths_to_try = ['names.txt', 'MakeMore/names.txt']
+    paths_to_try = [filename, f"MakeMore/{filename}"]
     for path in paths_to_try:
         if Path(path).exists():
             with open(path, 'r') as file:
                 names = file.read().split()
             return names
-    raise FileNotFoundError("Could not find names.txt in any of the expected locations")
+    raise FileNotFoundError(f"Could not find {filename} in any of the expected locations")
 
 def create_bigram_dataset(names):
     """
@@ -46,7 +49,7 @@ def create_bigram_dataset(names):
         tuple: (xs, ys) where both are torch.Tensor of integers
                xs contains indices of first characters in bigrams
                ys contains indices of second characters in bigrams
-               
+             
     Each name is surrounded with start and end tokens. For each adjacent pair
     of characters in the processed names, the first character index goes to xs
     and the second to ys. This creates the training data for the bigram model.
@@ -60,9 +63,12 @@ def create_bigram_dataset(names):
             ys.append(ctoi[c2])
     return torch.tensor(xs), torch.tensor(ys)
 
-def save_bigram_tensors():
+def save_bigram_tensors(filename="names.txt"):
     """
     Generate and save bigram tensors to disk for faster loading.
+    
+    Args:
+        filename (str): Path to the names file (default: "names.txt")
     
     This function processes the names, computes the bigram statistics,
     and saves the following tensors:
@@ -74,7 +80,7 @@ def save_bigram_tensors():
     The count matrix N starts with ones for smoothing and is incremented
     by each observed bigram transition. P is the normalized probability matrix.
     """
-    names = load_names()
+    names = load_names(filename)
     xs, ys = create_bigram_dataset(names)
     
     # Create count matrix N
@@ -91,10 +97,13 @@ def save_bigram_tensors():
     torch.save(P, "P.pt")
     torch.save(N, "N.pt")
 
-def load_bigram_tensors():
+def load_bigram_tensors(filename="names.txt"):
     """
     Load precomputed bigram tensors from disk, generating them if missing.
     
+    Args:
+        filename (str): Path to the names file (default: "names.txt")
+        
     Returns:
         tuple: (xs, ys, P, N) where:
             xs (torch.Tensor): Input character indices
@@ -106,7 +115,7 @@ def load_bigram_tensors():
     This provides a convenient way to cache the preprocessed data.
     """
     if not Path("xs.pt").is_file():
-        save_bigram_tensors()
+        save_bigram_tensors(filename)
     return (
         torch.load("xs.pt"),
         torch.load("ys.pt"),
@@ -114,10 +123,13 @@ def load_bigram_tensors():
         torch.load("N.pt")
     )
 
-def bigram_model():
+def bigram_model(filename="names.txt"):
     """
     Create and evaluate a counting-based bigram model.
     
+    Args:
+        filename (str): Path to the names file (default: "names.txt")
+        
     Returns:
         tuple: (P, loss) where:
             P (torch.Tensor): The probability matrix
@@ -127,13 +139,13 @@ def bigram_model():
     character transition probabilities. The loss is computed as the average
     negative log likelihood of the true transitions in the dataset.
     """
-    xs, ys, P, _ = load_bigram_tensors()
+    xs, ys, P, _ = load_bigram_tensors(filename)
     
     # Calculate loss
     loss = -torch.log(P[xs, ys]).mean()
     return P, loss.item()
 
-def generate_with_bigram(model, num_samples, seed=2147483647):
+def generate_with_bigram(model, num_samples, seed=2147483647, filename="names.txt"):
     """
     Generate names using the bigram probability model.
     
@@ -141,6 +153,7 @@ def generate_with_bigram(model, num_samples, seed=2147483647):
         model (torch.Tensor): Probability matrix P from bigram_model()
         num_samples (int): Number of names to generate
         seed (int): Random seed for reproducibility
+        filename (str): Path to the names file (default: "names.txt")
         
     Returns:
         list: A list of generated names as strings
@@ -164,10 +177,13 @@ def generate_with_bigram(model, num_samples, seed=2147483647):
         names.append(''.join(chars))
     return names
 
-def train_neural_net():
+def train_neural_net(filename="names.txt"):
     """
     Train a neural network-based bigram model using gradient descent.
     
+    Args:
+        filename (str): Path to the names file (default: "names.txt")
+        
     Returns:
         torch.Tensor: The trained weight matrix W with requires_grad=True
         
@@ -175,7 +191,7 @@ def train_neural_net():
     the next character. Training includes L2 regularization to prevent overfitting.
     Weights are initialized with a fixed seed for reproducibility.
     """
-    xs, ys, _, _ = load_bigram_tensors()
+    xs, ys, _, _ = load_bigram_tensors(filename)
     
     # Use torch.randn for better initialization
     generator = torch.Generator().manual_seed(2147483647)
@@ -210,10 +226,13 @@ def train_neural_net():
     
     return W
 
-def load_or_train_W():
+def load_or_train_W(filename="names.txt"):
     """
     Load pre-trained weights or train a new model if weights don't exist.
     
+    Args:
+        filename (str): Path to the names file (default: "names.txt")
+        
     Returns:
         torch.Tensor: The weight matrix W, either loaded from disk or freshly trained
         
@@ -221,13 +240,13 @@ def load_or_train_W():
     The weights are saved to W.pt for future use.
     """
     if not Path("W.pt").is_file():
-        W = train_neural_net()
+        W = train_neural_net(filename)
         torch.save(W, "W.pt")
     else:
         W = torch.load("W.pt")
     return W
 
-def generate_with_neural_net(W, num_samples, seed=2147483647):
+def generate_with_neural_net(W, num_samples, seed=2147483647, filename="names.txt"):
     """
     Generate names using the trained neural network model.
     
@@ -235,6 +254,7 @@ def generate_with_neural_net(W, num_samples, seed=2147483647):
         W (torch.Tensor): The trained weight matrix
         num_samples (int): Number of names to generate
         seed (int): Random seed for reproducibility
+        filename (str): Path to the names file (default: "names.txt")
         
     Returns:
         list: A list of generated names as strings
@@ -261,45 +281,36 @@ def generate_with_neural_net(W, num_samples, seed=2147483647):
         names.append(''.join(chars))
     return names
 
-def main():
+def main(filename="names.txt"):
     """
     Main function to demonstrate both bigram and neural network models.
     
+    Args:
+        filename (str): Path to the names file (default: "names.txt")
+        
     Generates names using both approaches and prints their performance metrics
     and sample outputs for comparison.
     """
     # Bigram model
-    P, loss = bigram_model()
+    P, loss = bigram_model(filename)
     print(f"Bigram model loss: {loss:.4f}")
     print("Generated names with bigram model:")
-    bigram_names = generate_with_bigram(P, 10)
+    bigram_names = generate_with_bigram(P, 10, filename=filename)
     for name in bigram_names:
         print(name)
     
     print("\n" + "="*50 + "\n")
     
     # Neural network model
-    W = load_or_train_W()
+    W = load_or_train_W(filename)
     print("Generated names with neural network:")
-    nn_names = generate_with_neural_net(W, 10)
+    nn_names = generate_with_neural_net(W, 10, filename=filename)
     for name in nn_names:
         print(name)
 
 if __name__=="__main__":
-    main()
-
-# Exercises:
-# E01: train a trigram language model, i.e. take two characters as an input to predict the 3rd one. 
-#      Feel free to use either counting or a neural net. Evaluate the loss; Did it improve over a bigram model?
-# E02: split up the dataset randomly into 80% train set, 10% dev set, 10% test set. 
-#      Train the bigram and trigram models only on the training set. Evaluate them on dev and test splits. What can you see?
-# E03: use the dev set to tune the strength of smoothing (or regularization) for the trigram model - 
-#       i.e. try many possibilities and see which one works best based on the dev set loss. 
-#       What patterns can you see in the train and dev set loss as you tune this strength? 
-#       Take the best setting of the smoothing and evaluate on the test set once and at the end. 
-#       How good of a loss do you achieve?
-# E04: we saw that our 1-hot vectors merely select a row of W, so producing these vectors explicitly feels wasteful. 
-#      Can you delete our use of F.one_hot in favor of simply indexing into rows of W?
-# E05: look up and use F.cross_entropy instead. You should achieve the same result. 
-#       Can you think of why we'd prefer to use F.cross_entropy instead?
-# E06: meta-exercise! Think of a fun/interesting exercise and complete it.
+    # Allow command line argument for filename
+    if len(sys.argv) > 1:
+        main(sys.argv[1])
+    else:
+        main()
