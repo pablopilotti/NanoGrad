@@ -541,7 +541,8 @@ def generate_with_trigram_neural_net(W, num_samples, seed=2147483647, filename="
         idx = [ctoi['.'], ctoi['.']] 
         chars = []
         while True:
-            xenc = F.one_hot(torch.tensor(idx), num_classes=VOCAB_SIZE).float()
+            # Must be [1, 2] shape for the linear layer (batch of 1)
+            xenc = F.one_hot(torch.tensor([idx]), num_classes=VOCAB_SIZE).float()
             xenc = xenc.view(xenc.shape[0], -1)
             logits = xenc @ W
             # do not change this part
@@ -576,19 +577,19 @@ def evaluate_model(model_type, model, test_file, filename="names.txt"):
         _, loss = trigram_model(filename)
         return loss
     elif model_type == 'bigram_nn':
-        # For neural net evaluation, we'll need to load the test data
-        # This is a simplified version - in practice you'd want to implement
-        # proper train/dev/test splits
-        W = model
-        # This is a placeholder - actual implementation would be more complex
-        return 0.0
+        xs, ys = create_bigram_dataset(load_names(test_file))
+        xenc = F.one_hot(xs, num_classes=VOCAB_SIZE).float()
+        logits = xenc @ model
+        probs = F.softmax(logits, dim=1)
+        loss = -probs[torch.arange(xs.size(0)), ys].log().mean()
+        return loss.item()
     elif model_type == 'trigram_nn':
-        # For neural net evaluation, we'll need to load the test data
-        # This is a simplified version - in practice you'd want to implement
-        # proper train/dev/test splits
-        W = model
-        # This is a placeholder - actual implementation would be more complex
-        return 0.0
+        xs, ys = create_trigram_dataset(load_names(test_file))
+        xenc = F.one_hot(xs, num_classes=VOCAB_SIZE).float().view(xs.shape[0], -1)
+        logits = xenc @ model
+        probs = F.softmax(logits, dim=1)
+        loss = -probs[torch.arange(xs.size(0)), ys].log().mean()
+        return loss.item()
     return 0.0
 
 def main():
@@ -630,7 +631,7 @@ def main():
                 
         elif args.trigram:
             if args.trigram == 'table':
-                save_trigram_tensors(args.file, args.train)
+                save_trigram_tensors(args.file, "weights")
                 print("Trigram table model trained and saved.")
             else:  # NN
                 W = train_trigram_neural_net(args.file)
