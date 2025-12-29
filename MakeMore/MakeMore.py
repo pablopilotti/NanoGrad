@@ -110,18 +110,21 @@ def save_bigram_tensors(filename="names.txt"):
     # Create probability matrix P
     P = N / N.sum(1, keepdim=True)
     
-    # Save tensors
-    torch.save(xs, "xs.pt")
-    torch.save(ys, "ys.pt")
-    torch.save(P, "P.pt")
-    torch.save(N, "N.pt")
+    # Save tensors using specific names to avoid overwriting
+    out_dir = Path("weights") # Default or from args
+    out_dir.mkdir(exist_ok=True)
+    torch.save(xs, out_dir / "xs_bigram.pt")
+    torch.save(ys, out_dir / "ys_bigram.pt")
+    torch.save(P, out_dir / "P_bigram.pt")
+    torch.save(N, out_dir / "N_bigram.pt")
 
-def save_trigram_tensors(filename="names.txt"):
+def save_trigram_tensors(filename="names.txt", save_dir="."):
     """
     Generate and save trigram tensors to disk for faster loading.
     
     Args:
         filename (str): Path to the names file (default: "names.txt")
+        save_dir (str): Directory to save the tensors (default: ".")
     
     This function processes the names, computes the trigram statistics,
     and saves the following tensors:
@@ -159,11 +162,12 @@ def save_trigram_tensors(filename="names.txt"):
     # Create probability matrix P
     P = N / N.sum(-1, keepdim=True)
     
-    # Save tensors
-    torch.save(xs, "xs.pt")
-    torch.save(ys, "ys.pt")
-    torch.save(P, "P.pt")
-    torch.save(N, "N.pt")
+    # Save tensors using specific names to avoid overwriting
+    save_path = Path(save_dir)
+    torch.save(xs, save_path / "xs_trigram.pt")
+    torch.save(ys, save_path / "ys_trigram.pt")
+    torch.save(P, save_path / "P_trigram.pt")
+    torch.save(N, save_path / "N_trigram.pt")
 
 def load_bigram_tensors(filename="names.txt"):
     """
@@ -182,13 +186,13 @@ def load_bigram_tensors(filename="names.txt"):
     If the tensor files don't exist, they are generated and saved first.
     This provides a convenient way to cache the preprocessed data.
     """
-    if not Path("xs.pt").is_file():
+    if not Path("weights/P_bigram.pt").is_file():
         save_bigram_tensors(filename)
     return (
-        torch.load("xs.pt"),
-        torch.load("ys.pt"),
-        torch.load("P.pt"),
-        torch.load("N.pt")
+        torch.load("weights/xs_bigram.pt"),
+        torch.load("weights/ys_bigram.pt"),
+        torch.load("weights/P_bigram.pt"),
+        torch.load("weights/N_bigram.pt")
     )
 
 def load_trigram_tensors(filename="names.txt"):
@@ -208,13 +212,13 @@ def load_trigram_tensors(filename="names.txt"):
     If the tensor files don't exist, they are generated and saved first.
     This provides a convenient way to cache the preprocessed data.
     """
-    if not Path("xs.pt").is_file():
-        save_trigram_tensors(filename)
+    if not Path("weights/P_trigram.pt").is_file():
+        save_trigram_tensors(filename, "weights")
     return (
-        torch.load("xs.pt"),
-        torch.load("ys.pt"),
-        torch.load("P.pt"),
-        torch.load("N.pt")
+        torch.load("weights/xs_trigram.pt"),
+        torch.load("weights/ys_trigram.pt"),
+        torch.load("weights/P_trigram.pt"),
+        torch.load("weights/N_trigram.pt")
     )
 
 def bigram_model(filename="names.txt"):
@@ -401,8 +405,8 @@ def train_trigram_neural_net(filename="names.txt"):
     
     # Use torch.randn for better initialization
     generator = torch.Generator().manual_seed(2147483647)
-    num_clases = VOCAB_SIZE * xs.ndim
-    W = torch.randn((num_clases, VOCAB_SIZE), generator=generator, requires_grad=True)
+    num_classes = VOCAB_SIZE * 2 # For trigram, input is 2 characters
+    W = torch.randn((num_classes, VOCAB_SIZE), generator=generator, requires_grad=True)
 
     learning_rate = 50.0
     num_epochs = 800
@@ -449,11 +453,12 @@ def load_or_train_bigram_W(filename="names.txt"):
     This provides a caching mechanism to avoid retraining the model every time.
     The weights are saved to W.pt for future use.
     """
-    if not Path("W.pt").is_file():
+    if not Path("weights/W_bigram.pt").is_file():
         W = train_bigram_neural_net(filename)
-        torch.save(W, "W.pt")
+        Path("weights").mkdir(exist_ok=True)
+        torch.save(W, "weights/W_bigram.pt")
     else:
-        W = torch.load("W.pt")
+        W = torch.load("weights/W_bigram.pt")
     return W
 
 def load_or_train_trigram_W(filename="names.txt"):
@@ -469,11 +474,12 @@ def load_or_train_trigram_W(filename="names.txt"):
     This provides a caching mechanism to avoid retraining the model every time.
     The weights are saved to W.pt for future use.
     """
-    if not Path("W.pt").is_file():
+    if not Path("weights/W_trigram.pt").is_file():
         W = train_trigram_neural_net(filename)
-        torch.save(W, "W.pt")
+        Path("weights").mkdir(exist_ok=True)
+        torch.save(W, "weights/W_trigram.pt")
     else:
-        W = torch.load("W.pt")
+        W = torch.load("weights/W_trigram.pt")
     return W
 
 def generate_with_bigram_neural_net(W, num_samples, seed=2147483647, filename="names.txt"):
@@ -528,13 +534,14 @@ def generate_with_trigram_neural_net(W, num_samples, seed=2147483647, filename="
     for the next character probabilities at each step.
     """
     generator = torch.Generator().manual_seed(seed)
-    num_clases =  W.shape[0]
     names = []
     for _ in range(num_samples):
-        idx = [ctoi['.']] * W.ndim 
+        # W is a 2D matrix [54, 27]. W.ndim is 2. 
+        # Trigram context needs exactly 2 characters.
+        idx = [ctoi['.'], ctoi['.']] 
         chars = []
         while True:
-            xenc = F.one_hot(torch.tensor([idx]), num_classes=VOCAB_SIZE).float()
+            xenc = F.one_hot(torch.tensor(idx), num_classes=VOCAB_SIZE).float()
             xenc = xenc.view(xenc.shape[0], -1)
             logits = xenc @ W
             # do not change this part
@@ -617,25 +624,28 @@ def main():
                 print("Bigram table model trained and saved.")
             else:  # NN
                 W = train_bigram_neural_net(args.file)
-                torch.save(W, "W.pt")
+                Path(args.train).mkdir(exist_ok=True)
+                torch.save(W, f"{args.train}/W_bigram.pt")
                 print("Bigram neural net model trained and saved.")
                 
         elif args.trigram:
             if args.trigram == 'table':
-                save_trigram_tensors(args.file)
+                save_trigram_tensors(args.file, args.train)
                 print("Trigram table model trained and saved.")
             else:  # NN
                 W = train_trigram_neural_net(args.file)
-                torch.save(W, "W.pt")
+                Path(args.train).mkdir(exist_ok=True)
+                torch.save(W, f"{args.train}/W_trigram.pt")
                 print("Trigram neural net model trained and saved.")
                 
         elif args.all:
             save_bigram_tensors(args.file)
-            save_trigram_tensors(args.file)
+            save_trigram_tensors(args.file, "weights")
             W1 = train_bigram_neural_net(args.file)
             W2 = train_trigram_neural_net(args.file)
-            torch.save(W1, "W_bigram.pt")
-            torch.save(W2, "W_trigram.pt")
+            Path(args.train).mkdir(exist_ok=True)
+            torch.save(W1, f"{args.train}/W_bigram.pt")
+            torch.save(W2, f"{args.train}/W_trigram.pt")
             print("All models trained and saved.")
         
     elif args.generate:
@@ -648,7 +658,7 @@ def main():
                 for name in names:
                     print(name)
             else:  # NN
-                W = torch.load("W.pt")
+                W = torch.load(f"{args.generate}/W_bigram.pt")
                 names = generate_with_bigram_neural_net(W, 10, filename=args.file)
                 for name in names:
                     print(name)
@@ -660,7 +670,7 @@ def main():
                 for name in names:
                     print(name)
             else:  # NN
-                W = torch.load("W.pt")
+                W = torch.load(f"{args.generate}/W_trigram.pt")
                 names = generate_with_trigram_neural_net(W, 10, filename=args.file)
                 for name in names:
                     print(name)
@@ -680,13 +690,13 @@ def main():
                 print(name)
                 
             print("\nBigram neural net:")
-            W = torch.load("W_bigram.pt")
+            W = torch.load(f"{args.generate}/W_bigram.pt")
             names = generate_with_bigram_neural_net(W, 5, filename=args.file)
             for name in names:
                 print(name)
                 
             print("\nTrigram neural net:")
-            W = torch.load("W_trigram.pt")
+            W = torch.load(f"{args.generate}/W_trigram.pt")
             names = generate_with_trigram_neural_net(W, 5, filename=args.file)
             for name in names:
                 print(name)
@@ -701,7 +711,7 @@ def main():
                 P, loss = bigram_model(args.file)
                 print(f"Bigram table model loss: {loss:.4f}")
             else:  # NN
-                W = torch.load("W.pt")
+                W = torch.load(f"{args.evaluate}/W_bigram.pt")
                 loss = evaluate_model('bigram_nn', W, args.file, args.file)
                 print(f"Bigram neural net model loss: {loss:.4f}")
                 
@@ -710,7 +720,7 @@ def main():
                 P, loss = trigram_model(args.file)
                 print(f"Trigram table model loss: {loss:.4f}")
             else:  # NN
-                W = torch.load("W.pt")
+                W = torch.load(f"{args.evaluate}/W_trigram.pt")
                 loss = evaluate_model('trigram_nn', W, args.file, args.file)
                 print(f"Trigram neural net model loss: {loss:.4f}")
                 
@@ -721,11 +731,11 @@ def main():
             P, loss = trigram_model(args.file)
             print(f"Trigram table model loss: {loss:.4f}")
             
-            W = torch.load("W_bigram.pt")
+            W = torch.load(f"{args.evaluate}/W_bigram.pt")
             loss = evaluate_model('bigram_nn', W, args.file, args.file)
             print(f"Bigram neural net model loss: {loss:.4f}")
             
-            W = torch.load("W_trigram.pt")
+            W = torch.load(f"{args.evaluate}/W_trigram.pt")
             loss = evaluate_model('trigram_nn', W, args.file, args.file)
             print(f"Trigram neural net model loss: {loss:.4f}")
 
