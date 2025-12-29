@@ -365,13 +365,15 @@ def train_bigram_neural_net(filename="names.txt"):
     
     for epoch in range(num_epochs):
         # Forward pass
-        xenc = F.one_hot(xs, num_classes=VOCAB_SIZE).float()
-        logits = xenc @ W
-        counts = logits.exp()
-        probs = counts / counts.sum(1, keepdim=True)
-        
+        # xenc = F.one_hot(xs, num_classes=VOCAB_SIZE).float()
+        # logits = xenc @ W
+        logits = W[xs]
+        # counts = logits.exp()
+        # probs = counts / counts.sum(1, keepdim=True)
+               
         # Loss with L2 regularization
-        data_loss = -probs[torch.arange(xs.size(0)), ys].log().mean()
+        # data_loss = -probs[torch.arange(xs.size(0)), ys].log().mean()
+        data_loss = F.cross_entropy(logits, ys)
         reg_loss = regularization_strength * (W**2).mean()
         loss = data_loss + reg_loss
         
@@ -414,16 +416,18 @@ def train_trigram_neural_net(filename="names.txt"):
     
     for epoch in range(num_epochs):
         # Forward pass
-        xenc = F.one_hot(xs, num_classes=VOCAB_SIZE).float()
-        xenc = xenc.view(xenc.shape[0], -1)
+        # xenc = F.one_hot(xs, num_classes=VOCAB_SIZE).float()
+        # xenc = xenc.view(xenc.shape[0], -1)
 
-        logits = xenc @ W
+        # logits = xenc @ W
+        logits = W[xs[:,0] + xs[:,1]]
         # do not change this part
-        counts = logits.exp()
-        probs = counts / counts.sum(1, keepdim=True)
+        # counts = logits.exp()
+        # probs = counts / counts.sum(1, keepdim=True)
         
         # Loss with L2 regularization
-        data_loss = -probs[torch.arange(xs.size(0)), ys].log().mean()
+        # data_loss = -probs[torch.arange(xs.size(0)), ys].log().mean()
+        data_loss = F.cross_entropy(logits, ys)
         reg_loss = regularization_strength * (W**2).mean()
         loss = data_loss + reg_loss
         
@@ -505,8 +509,9 @@ def generate_with_bigram_neural_net(W, num_samples, seed=2147483647, filename="n
         idx = 0  # Start with '.'
         chars = []
         while True:
-            xenc = F.one_hot(torch.tensor([idx]), num_classes=VOCAB_SIZE).float()
-            logits = xenc @ W
+            # xenc = F.one_hot(torch.tensor([idx]), num_classes=VOCAB_SIZE).float()
+            # logits = xenc @ W
+            logits = W[idx].unsqueeze(0)
             counts = logits.exp()
             prob = counts / counts.sum(1, keepdim=True)
             
@@ -542,9 +547,11 @@ def generate_with_trigram_neural_net(W, num_samples, seed=2147483647, filename="
         chars = []
         while True:
             # Must be [1, 2] shape for the linear layer (batch of 1)
-            xenc = F.one_hot(torch.tensor([idx]), num_classes=VOCAB_SIZE).float()
-            xenc = xenc.view(xenc.shape[0], -1)
-            logits = xenc @ W
+            # xenc = F.one_hot(torch.tensor([idx]), num_classes=VOCAB_SIZE).float()
+            # xenc = xenc.view(xenc.shape[0], -1)
+            # logits = xenc @ W
+            x_input = idx[0] + idx[1]
+            logits = W[x_input].unsqueeze(0)
             # do not change this part
             counts = logits.exp()
             prob = counts / counts.sum(1, keepdim=True)
@@ -583,7 +590,7 @@ def eval_trigram_loss(counts, smoothing, eval_names):
     for name in eval_names:
         tokens = '.' + '.' + name + '.'
         for c1, c2, c3 in zip(tokens, tokens[1:], tokens[2:]):
-            prob = P[ctoi[c1], ctoi[ctoi[c2]], ctoi[c3]]
+            prob = P[ctoi[c1], ctoi[c2], ctoi[c3]]
             loss += -torch.log(prob)
             n += 1
     return (loss / n).item()
@@ -609,15 +616,17 @@ def evaluate_model(model_type, model, test_file, filename="names.txt"):
         return loss
     elif model_type == 'bigram_nn':
         xs, ys = create_bigram_dataset(load_names(test_file))
-        xenc = F.one_hot(xs, num_classes=VOCAB_SIZE).float()
-        logits = xenc @ model
+        # xenc = F.one_hot(xs, num_classes=VOCAB_SIZE).float()
+        # logits = xenc @ model
+        logits = model[xs]
         probs = F.softmax(logits, dim=1)
         loss = -probs[torch.arange(xs.size(0)), ys].log().mean()
         return loss.item()
     elif model_type == 'trigram_nn':
         xs, ys = create_trigram_dataset(load_names(test_file))
-        xenc = F.one_hot(xs, num_classes=VOCAB_SIZE).float().view(xs.shape[0], -1)
-        logits = xenc @ model
+        # xenc = F.one_hot(xs, num_classes=VOCAB_SIZE).float().view(xs.shape[0], -1)
+        # logits = xenc @ model
+        logits = model[xs[:,0]] + model[xs[:,1] + VOCAB_SIZE]
         probs = F.softmax(logits, dim=1)
         loss = -probs[torch.arange(xs.size(0)), ys].log().mean()
         return loss.item()
