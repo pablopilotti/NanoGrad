@@ -557,6 +557,37 @@ def generate_with_trigram_neural_net(W, num_samples, seed=2147483647, filename="
         names.append(''.join(chars))
     return names
 
+def split_data(names):
+    """Splits names into 80% train, 10% dev, and 10% test."""
+    random.seed(42)
+    random.shuffle(names)
+    n1 = int(0.8 * len(names))
+    n2 = int(0.9 * len(names))
+    return names[:n1], names[n1:n2], names[n2:]
+
+def get_trigram_counts(names):
+    """Calculates raw counts for all trigrams in the provided list of names."""
+    N = torch.zeros((VOCAB_SIZE, VOCAB_SIZE, VOCAB_SIZE), dtype=torch.int32)
+    for name in names:
+        tokens = '.' + '.' + name + '.'
+        for c1, c2, c3 in zip(tokens, tokens[1:], tokens[2:]):
+            N[ctoi[c1], ctoi[c2], ctoi[c3]] += 1
+    return N
+
+def eval_trigram_loss(counts, smoothing, eval_names):
+    """Computes NLL loss for a name set given a count matrix and smoothing strength."""
+    P = (counts.float() + smoothing)
+    P /= P.sum(2, keepdim=True)
+    
+    loss, n = 0, 0
+    for name in eval_names:
+        tokens = '.' + '.' + name + '.'
+        for c1, c2, c3 in zip(tokens, tokens[1:], tokens[2:]):
+            prob = P[ctoi[c1], ctoi[ctoi[c2]], ctoi[c3]]
+            loss += -torch.log(prob)
+            n += 1
+    return (loss / n).item()
+
 def evaluate_model(model_type, model, test_file, filename="names.txt"):
     """
     Evaluate a model on a test dataset.
@@ -718,8 +749,26 @@ def main():
                 
         elif args.trigram:
             if args.trigram == 'table':
-                P, loss = trigram_model(args.file)
-                print(f"Trigram table model loss: {loss:.4f}")
+                # E03 logic: Hyperparameter tuning
+                names = load_names(args.file)
+                train_n, dev_n, test_n = split_data(names)
+                N_train = get_trigram_counts(train_n)
+                
+                best_s, best_loss = None, float('inf')
+                # Try a range of smoothing possibilities (orders of magnitude)
+                for s in [0.001, 0.01, 0.1, 1.0, 10.0]:
+                    t_loss = eval_trigram_loss(N_train, s, train_n)
+                    d_loss = eval_trigram_loss(N_train, s, dev_n)
+                    print(f"Smoothing: {s:6.3f} | Train Loss: {t_loss:.4f} | Dev Loss: {d_loss:.4f}")
+                    
+                    if d_loss < best_loss:
+                        best_loss = d_loss
+                        best_s = s
+                
+                # Evaluate once on test set with best s
+                final_test_loss = eval_trigram_loss(N_train, best_s, test_n)
+                print(f"\nBest smoothing: {best_s}")
+                print(f"Final Test Loss: {final_test_loss:.4f}")
             else:  # NN
                 W = torch.load(f"{args.evaluate}/W_trigram.pt")
                 loss = evaluate_model('trigram_nn', W, args.file, args.file)
